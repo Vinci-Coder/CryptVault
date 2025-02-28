@@ -1,0 +1,23 @@
+
+name: Build and Publish CryptVault
+on:
+  push:
+    branches: [main]
+  release:
+    types: [created]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: Install maturin
+      run: pip install maturin
+    - name: Build Wheel
+      run: maturin build --release
+    - name: Publish (on release)
+      if: github.event_name == 'release'
+      run: maturin publish -u ${{ secrets.PYPI_USERNAME }} -p ${{ secrets.PYPI_PASSWORD }}

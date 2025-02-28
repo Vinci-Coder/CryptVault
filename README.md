@@ -1,2 +1,3 @@
-# CryptVault
-Lib for cryptography in python
+# CryptVault - Secure Cryptography Library
+
+Biblioteca de segurança para o CryptVault Secrets.
