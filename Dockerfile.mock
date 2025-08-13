@@ -1,0 +1,17 @@
+# Dockerfile para serviços mock
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instala dependências mínimas para mocks
+RUN pip install fastapi uvicorn
+
+# Copia arquivos de mock
+COPY mocks/ mocks/
+
+# Exposição de portas será definida no docker-compose
+EXPOSE 8001 8002
+
+# Comando será sobrescrito no docker-compose
+CMD ["python", "-c", "print('Mock service container')"]
+

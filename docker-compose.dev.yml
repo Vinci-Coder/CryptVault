@@ -1,0 +1,125 @@
+version: '3.8'
+
+services:
+  # Banco de dados PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: cryptvault_db
+      POSTGRES_USER: cryptvault
+      POSTGRES_PASSWORD: password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cryptvault -d cryptvault_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis para cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Mock do AuthManager
+  auth-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    command: python mocks/services/auth_mock.py
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Mock do Crypto Service  
+  crypto-mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    command: python mocks/services/crypto_mock.py
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Aplicação CryptVault Core
+  cryptvault-core:
+    build: .
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://cryptvault:password@postgres:5432/cryptvault_db
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=dev-secret-key-change-in-production
+      - SECRET_KEY=dev-app-secret-change-in-production
+      - AUTH_MANAGER_URL=http://auth-mock:8001
+      - AUTH_MANAGER_API_KEY=mock-auth-api-key
+      - CRYPTO_SERVICE_URL=http://crypto-mock:8002
+      - CRYPTO_SERVICE_API_KEY=mock-crypto-api-key
+      - DEBUG=true
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - BACKEND_CORS_ORIGINS=["http://localhost:3000","http://localhost:8080"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-mock:
+        condition: service_healthy
+      crypto-mock:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./logs:/app/logs
+
+  # Adminer para administração do banco (desenvolvimento)
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: cryptvault-dev-network
+
